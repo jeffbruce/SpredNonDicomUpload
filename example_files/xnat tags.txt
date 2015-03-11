@@ -1,0 +1,84 @@
+SESSION
+
+experimentData
+	label: # SPReD session ID
+	date: vnmr:time_submitted?
+	time: vnmr:time_submitted?
+	duration: is this constant for every session we upload?  is this in the header?  # duration of experiment
+		(ni * nf * nfid * nt * tr  / etl) 
+	delay:  # no idea what this means -- no documentation (leave it for now)
+	delayAttr_ref_expt_id:  # no idea what this means -- no documentation (leave it for now)
+	# fields:  # can add additional fields here I believe
+
+imageSessionData
+	Attr_modality: MR
+	scanner: 7T Animal System
+	scannerAttr_manufacturer: Agilent
+	scannerAttr_model: ignore
+	operator: study:operator?  ## mmuser?
+	acquisition_site: Mouse Imaging Centre (MICe)
+
+mrSessionData
+	coil: vnmr:rfcoil
+	fieldStrength: always 7.0?  is this in the minc header?
+	marker:  is this in the mincheader? is this constant across all studies?  # method used to mark left-right (e.g. Vitamin E capsule)
+
+SCAN
+
+imageScanDataTags
+	Attr_ID:
+	Attr_type:  # T2 FSE 3D MICE
+	Attr_project: PND11
+	image_session_ID: # spred_E00367 -- is this automatically supplied?
+	quality: usable  # what are the valid values here?
+	series_description: # AXIAL T1 MPRAGE  ## vnmr:seqfil / pslabel -- might be specific DICOM values as well
+	scanner: 7T Animal System
+	scannerAttr_manufacturer: Agilent
+	scannerAttr_model: ignore
+	modality: MR
+	frames: # 28  ## omit
+	operator: study:operator?  ## mmuser?
+	file: 	# of type abstractResource -- note, tags, label, file_count, file_size as elements/attributes
+	          # so probably needs to be expanded, and resource probably replaces abstractResource
+	startTime: vnmr:time_submitted
+
+mrScanDataTags
+	# everything in imageScanData, along with the below tags
+	coil: vnmr:coil
+	fieldStrength: always 7.0?
+	# <parameters>
+	voxelResAttr_units: vnmr:pslabel?
+		resolution_z = lro/(np/2)
+		resolution_y = lpe2/(nv2)
+		resolution_x = lpe/(nv) 
+	voxelResAttr_x: can get these in pyminc / minc commands in R -- any way of getting this from the minc header?
+	voxelResAttr_y: 
+	voxelResAttr_z: 
+	orientation: vnmr:orient?  # Tra ## trans
+	fovAttr_x: 
+	fovAttr_y: 
+		can't extend this to 3D -- lro, lpe2, lpe
+	matrixAttr_x: n
+	matrixAttr_y: 
+		can't extend this to 3D -- np/2, nv, nv2
+	partitions:  # no idea what this is -- no documentation
+	tr: vnmr:tr
+	te: vnmr:te
+	ti: vnmr:ti
+	flip: vnmr:fliplist?  # 90 -- GSE is not 90 every time
+	sequence: vnmr:seqfil
+	origin:  # not sure
+	imageType:  MINC
+	scanSequence: # not sure
+	seqVariant: # not sure
+	scanOptions: # no need to add anything else
+	acqType: vnmr:acqtype  -- tells you how to do the phase encode scheme
+	coil: vnmr:rfcoil
+	pixelBandwidth:   # reciprocal of the total sampling period, in Hz/pixel
+	addParam:   # type xnat:addField, probably to allow any additional parameters
+	addParamAttr_name:
+		T2_3D_fse_mm_ev
+
+Additional fields
+	in-vivo vs. ex-vivo  								# where to find this both in mincheader and XNAT
+
