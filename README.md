@@ -21,6 +21,11 @@ To learn how to use it, consult the Workflow header and make sure you have every
 
 4. Run the Python script, supplying your username and password, and it will upload subjects, sessions, scans, and the associated files to the project and site at the specified SPReD url.
 
+## Dependencies
+
+- mincinfo
+- python packages (requests, numpy, pandas, subprocess)
+
 ## Development Notes / Rationales
 
 #### Incorrect Field Mappings
@@ -52,11 +57,6 @@ This section describes some fields that were difficult to deal with in the uploa
 		1. there is only 1 project, 1 session, 1 scan, 1 resource, and 1 file associated with a subject
 		2. metadata is generated with a separate R script, and must conform to a specific schema to be a valid upload
 	- all of the QA is specific to MICe
-
-## Dependencies
-
-- mincinfo
-- python packages (requests, numpy, pandas, subprocess)
 
 ## TO DO
 
