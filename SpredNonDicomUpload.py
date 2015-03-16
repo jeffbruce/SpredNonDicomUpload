@@ -10,15 +10,6 @@ import subprocess
 import sys
 
 
-# LAST WEEK
-# - successfully tested that the process works on a folder
-# - added some error checking, refactored some code to make it easier to follow
-# - identified ways of improving the script (see giant TO DO below)
-# - made the whole process interactive so you choose to upload a file each time 
-# - overall thoughts: definitely doing a good service, and cool how much data I can automatically upload, 
-# 					  but I want to get back to the Shiny app soon
-
-
 # SET GLOBALS
 
 # constants used in the upload which will need to be changed for subsequent uploads
@@ -73,7 +64,7 @@ def check_HTTP_status_code(action, response, subj_SPReD_ID):
 def create_scan(MINC_filename, subj_SPReD_ID, session_name):
 	'''Creates a scan in SPReD, including the upload of any associated files.'''
 
-	# # add constant key-values here
+	# add constant key-values here
 	scan_params = {
 		'xsiType': 'xnat:mrScanData',
 		'xnat:mrScanData/type': scan_type,  # double check that this is the format SPReD wants
