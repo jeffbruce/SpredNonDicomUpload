@@ -1,13 +1,13 @@
 # !/usr/bin/python
 
+import datetime
 import math
+import os
 import numpy as np
 import pandas as pd
-import pdb
 import requests
 import subprocess
 import sys
-import traceback
 
 
 # LAST WEEK
@@ -17,34 +17,6 @@ import traceback
 # - made the whole process interactive so you choose to upload a file each time 
 # - overall thoughts: definitely doing a good service, and cool how much data I can automatically upload, 
 # 					  but I want to get back to the Shiny app soon
-
-
-# TO DO
-# - maybe put the subject string into an upload note, so that it's obvious what spred_id corresponds to which filename?
-# 	- this may be necessary when uploading reconstructions
-# - delete a subject/session/scan prior to PUT?
-# 	- what if the entity has extra content that should not be there?
-# - verify that the metadata are accurate in the upload
-# 	- go through and check that the metadata are correct?
-# 	- any other better way of verifying this?
-# - produce a log file of the metadata that was used for that upload along with the time of upload?
-# 	- that way someone can go back and look at a previous upload to see what exact files were uploaded
-# - how to ensure that a file was truly successfuly uploaded? 
-# 	- is there information contained in the HTTP response body that I can use?
-# 	- use a checksum somehow?
-# 	- manually spot check certain files?
-# 	- can't use the file size despite the MINC files being pretty huge files -- many of them are the same size
-# - how to increase upload speed?
-# 	- most of the time is the actual upload of the file (about 10-15 secs for 75 MB file)
-# - refactor string concatenation from + to ''.join of a list of strings
-# 	- decided not to do this because it would be less comprehensible to a newcomer
-# - refactor methods so that instead of passing spred_id, filename around, you pass an object or namedtuple
-# - write some proper use case documentation for this process
-# - handle partial uploads (e.g. what happens if an upload fails partway through?  do you repeat the upload?)
-# 	- upload process is now interactive
-# 	- should you be able to toggle interactivity on or off?
-# - handle reconstructed images
-# 	- most places would download the MINC files, convert to NIfTI then analyze with FSL
 
 
 # SET GLOBALS
@@ -77,6 +49,9 @@ session = requests.session()
 session.auth = (username, password)
 # .csv subject metadata file created in R with GenerateSubjectMetadata.R
 subject_metadata_file = 'SubjectMetadata.csv'
+# file handler to record information about specific subjects that were uploaded to SPReD
+# this is initialized in init_log_file
+log_file = 0
 
 
 def check_HTTP_status_code(action, response, subj_SPReD_ID):
@@ -90,7 +65,8 @@ def check_HTTP_status_code(action, response, subj_SPReD_ID):
 		print 'Error processing subject: ' + subj_SPReD_ID
 		print 'Problem related to action: ' + action
 		print 'Generated an HTTP Response Error Code: ' + str(response.status_code)
-		# traceback.print_tb(traceback, limit=3)  # prints to stderr
+		log_file.writelines(' '.join(['Problem', action, 'for subject', subj_SPReD_ID]))
+		log_file.close()
 		sys.exit()
 
 
@@ -182,7 +158,8 @@ def create_scan(MINC_filename, subj_SPReD_ID, session_name):
 
 	check_HTTP_status_code('creating file', resp, subj_SPReD_ID)
 
-	notify_user_of_success(subj_SPReD_ID)
+	notify_user_of_success(subj_SPReD_ID, MINC_filename)
+	print_to_logfile(subj_SPReD_ID, MINC_filename)
 
 
 def create_session(MINC_filename, subj_SPReD_ID, session_name):
@@ -251,7 +228,7 @@ def create_session(MINC_filename, subj_SPReD_ID, session_name):
 
 def create_subject(MINC_filename, subj_SPReD_ID, row):
 	'''Creates a subject in SPReD.
-	row is a row in a pandas data frame.'''
+	row is a record in a pandas data frame.'''
 
 	subj_params = {
 		'pi_firstname': pi_firstname,
@@ -296,18 +273,50 @@ def get_minc_field(field_name, MINC_filename):
 	return value
 
 
+def init_log_file():
+	'''Creates a log file to record subjects that were successfully uploaded to braincode.
+	Returns the log file handle.'''
+
+	log_dir_name = 'logs'
+
+	if not os.path.isdir(log_dir_name):
+		os.makedirs(log_dir_name)
+
+	todays_datetime = datetime.datetime.now()
+	fname = 'logs/' + ' '.join([str(todays_datetime), 'spred braincode upload.txt'])
+	log_file = open(fname, 'w')
+	log_file.writelines('Uploaded the following subjects and related information into project: ' + project_name + '\n')
+	log_file.writelines('\n')
+	log_file.writelines(','.join(['SPReD_id', 'MINC_filename']) + '\n')
+
+	return log_file
+
+
 def insert(original, new, pos):
 	'''Inserts new (char) inside original (string) at pos (int).'''
+
 	return original[:pos] + new + original[pos:]
 
 
-def notify_user_of_success(subj_SPReD_ID):
+def notify_user_of_success(subj_SPReD_ID, MINC_filename):
 	'''Notifies the user of the successful creation of a collective subject, session, scan.'''
-	print 'Successful creation of subject: ' + subj_SPReD_ID
+
+	print 'Successfully created subject: ' + subj_SPReD_ID
+
+
+def print_to_logfile(subj_SPReD_ID, MINC_filename):
+	'''Prints a line to the log file containing the SPReD_ID of the subject and the file associated
+	with that subject.'''
+
+	log_file.writelines(','.join([subj_SPReD_ID, MINC_filename]) + '\n')
 
 
 def upload_data():
 	'''Loop through folders of mouse strains and create individual subjects to upload.'''
+
+	global log_file
+
+	log_file = init_log_file()
 
 	# create data.frame like structure containing subject metadata
 	subject_metadata = pd.read_table(filepath_or_buffer=subject_metadata_file, dtype={'Filename': str}, sep=',')
@@ -317,7 +326,7 @@ def upload_data():
 
 		subj_num = str(row['SubjNum'])
 
-		# need to pad the subject number with zeros because pandas
+		# need to left pad the subject number with zeros
 		subj_num = zero_pad_subj_num(subj_num)
 
 		MINC_filename = row['Filename']
@@ -326,7 +335,7 @@ def upload_data():
 		are_you_sure = ''
 
 		while are_you_sure != 'y' and are_you_sure != 'n':
-			are_you_sure = raw_input("Are you sure you want to create subject %s" % subj_SPReD_ID + " and an associated session/scan? (y/n): ")
+			are_you_sure = raw_input("Create subject %s" % subj_SPReD_ID + " with file %s? (y/n): " % MINC_filename)
 			if are_you_sure == 'y':
 				create_subject(MINC_filename, subj_SPReD_ID, row)
 				create_session(MINC_filename, subj_SPReD_ID, session_name)
@@ -335,6 +344,8 @@ def upload_data():
 				pass
 			else:
 				print 'Please enter either y or n'
+
+	log_file.close()
 
 
 def zero_pad_subj_num(subj_num):
@@ -353,4 +364,5 @@ def main():
 
 
 if __name__ == '__main__':
+
 	main()

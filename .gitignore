@@ -13,4 +13,7 @@ vignettes/*.html
 vignettes/*.pdf
 
 # locked files
-.~lock
+*.~lock
+
+# .txt log files
+*.txt
