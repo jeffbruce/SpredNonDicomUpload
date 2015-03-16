@@ -1,5 +1,5 @@
 ---
-output: html_document
+output: pdf_document
 ---
 # SpredNonDicomUpload Documentation
 
@@ -30,16 +30,17 @@ To learn how to use these scripts, look at the Workflow below and make sure you 
 
 #### Incorrect Field Mappings
 
-This section describes some MINC fields that were difficult to map to permissible XNAT XML elements and attributes.
+This section describes some MINC fields that were difficult to map to the allowable XNAT XML elements and attributes.
 
 - the difference between `study:start_time` and `vnmr:time_submitted` in the MINC headers is unknown
 	  - it is unclear whether these fields would map to SPReD session and scan, respectively
 	  - for MICe's purposes, there will only ever be 1 scan per session, so it doesn't matter for the current implementation
 - fov (x and y) in XNAT is of type integer, yet these variables are of type float in the MINC header
 	  - to convert to mm, simply multiplied by 10
-- the fov and matrix fields in XNAT are two dimensional (only x and y), however, all images at MICe are 3 dimensional without slices
+- fov and matrix fields in XNAT are two dimensional (only x and y), however, all images at MICe are 3 dimensional without slices
 	  - what is the best way of handling this behaviour?  possibly supply z dimension in the `frames` XNAT XML element
 - duration goes up to a maximum of around 16 hours
+    - for some reason XNAT is not accepting well-formed xs:duration values
 - it's not clear what fields to use for mouse background, strain, and genotype
 
 #### Rationales
@@ -47,7 +48,7 @@ This section describes some MINC fields that were difficult to map to permissibl
 - upload process is now interactive
     - when you're uploading such a large amount of data someone should probably oversee the process
     - the script is safe to run without interactivity because it will automatically shut off if it fails during one step of the process, and will notify the user what subject and action (create subject, session, scan, resource, file) that it failed on
-	  - a bit torn on whether interactive mode should be optional and therefore a command line argument
+	  - a bit torn on whether interactive mode should be optional or a command line argument
 - decided not to refactor methods so that instead of passing spred id and MINC filename around, you pass an object or namedtuple, because it would just be extra work
 - extending this module to work with any non-DICOM data would be difficult
 	  - however, this script is still a useful code skeleton for people with their own non-DICOM data
@@ -56,29 +57,25 @@ This section describes some MINC fields that were difficult to map to permissibl
 		    2. metadata is generated with a separate R script, and must conform to a specific schema in order to qualify as a valid upload
 	  - all of the QA is specific to MICe
 - a log file is produced in a subdirectory called 'logs' every time the script is run, allowing one to quickly see the actual files that were uploaded
+- the bottleneck of this script is the actual uploading of the files because some of the files are up to 500 MB
+    - currently it takes about 10-15 seconds to upload a 75 MB file
+    - future development could focus on speeding up this upload somehow (e.g. compression)
 
 ## TO DO
 
 - delete a subject/session/scan prior to PUT?
 	  - what if an entity has extra content that it should not have?
-    - what if the subject can't be deleted for some reason?  this has happened to me before, producing HTTP 403s
-- produce a log file of the metadata that was used for that upload along with the time of upload?
-	  - that way someone can go back and look at a previous upload to see the exact files that were uploaded
-    - what should the structure of this log file be?
+    - what if the subject can't be deleted for some reason?  this has happened to me before, producing an HTTP 403 error
 - verify that the upload was successful (both the file and metadata are identical to the intended upload)
-    - verify that metadata are accurate?
+    - how to check that metadata are accurate?
 	      - could always manually verify the metadata
         - could GET the data and check it against what was added
-    - verify that the MINC file is accurate?
+    - how to check that the MINC file is accurate?
 	      - is there information contained in the HTTP response body that I can use?
 	      - use a checksum somehow?
         - performing a GET and checking would be somewhat expensive
 	      - manually spot check certain files with a trained eye?
-- how to increase upload speed?
-	  - most of the time comes down to the actual upload of the file (about 10-15 secs for 75 MB file, and much longer for 450 MB)
-- write some proper use case documentation for this process
-    - this might help someone use it in the future
-- handle reconstructed images
+- extend script to work for reconstructed / pipeline processed images
 	  - most places would download the MINC files, convert to NIfTI then analyze with FSL
 
 <!---
