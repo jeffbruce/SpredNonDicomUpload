@@ -17,3 +17,6 @@ vignettes/*.pdf
 
 # .txt log files
 *.txt
+
+# example files
+*example_files/*
