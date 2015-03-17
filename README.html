@@ -132,15 +132,15 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <ul>
 <li>delete a subject/session/scan prior to PUT?
 <ul>
-<li>what if an entity has extra content that it should not have?</li>
+<li>an entity might have extra content that it should not have</li>
 <li>what if the subject can’t be deleted for some reason? this has happened to me before, producing an HTTP 403 error</li>
 </ul></li>
-<li>verify that the upload was successful (both the file and metadata are identical to the intended upload)
+<li>verify that the upload was successful (both metadata and actual file should be accurate)
 <ul>
 <li>how to check that metadata are accurate?
 <ul>
-<li>could always manually verify the metadata</li>
-<li>could GET the data and check it against what was added</li>
+<li>manually verify the metadata</li>
+<li>GET the data and check it against what was added</li>
 </ul></li>
 <li>how to check that the MINC file is accurate?
 <ul>

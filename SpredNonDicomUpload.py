@@ -43,6 +43,8 @@ subject_metadata_file = 'SubjectMetadata.csv'
 # file handler to record information about specific subjects that were uploaded to SPReD
 # this is initialized in init_log_file
 log_file = 0
+# disable interactivity?
+enable_interactivity = True
 
 
 def check_HTTP_status_code(action, response, subj_SPReD_ID):
@@ -277,6 +279,8 @@ def init_log_file():
 	fname = 'logs/' + ' '.join([str(todays_datetime), 'spred braincode upload.txt'])
 	log_file = open(fname, 'w')
 	log_file.writelines('Uploaded the following subjects and related information into project: ' + project_name + '\n')
+	log_file.writelines('Uploaded data to the following url: ' + base_url + '\n')
+	log_file.writelines('Data was uploaded by user: ' + username + '\n')
 	log_file.writelines('\n')
 	log_file.writelines(','.join(['SPReD_id', 'MINC_filename']) + '\n')
 
@@ -305,10 +309,6 @@ def print_to_logfile(subj_SPReD_ID, MINC_filename):
 def upload_data():
 	'''Loop through folders of mouse strains and create individual subjects to upload.'''
 
-	global log_file
-
-	log_file = init_log_file()
-
 	# create data.frame like structure containing subject metadata
 	subject_metadata = pd.read_table(filepath_or_buffer=subject_metadata_file, dtype={'Filename': str}, sep=',')
 
@@ -326,7 +326,10 @@ def upload_data():
 		are_you_sure = ''
 
 		while are_you_sure != 'y' and are_you_sure != 'n':
-			are_you_sure = raw_input("Create subject %s" % subj_SPReD_ID + " with file %s? (y/n): " % MINC_filename)
+			if enable_interactivity == False:
+				are_you_sure = 'y'
+			else:
+				are_you_sure = raw_input("Create subject %s" % subj_SPReD_ID + " with file %s? (y/n): " % MINC_filename)
 			if are_you_sure == 'y':
 				create_subject(MINC_filename, subj_SPReD_ID, row)
 				create_session(MINC_filename, subj_SPReD_ID, session_name)
@@ -335,8 +338,6 @@ def upload_data():
 				pass
 			else:
 				print 'Please enter either y or n'
-
-	log_file.close()
 
 
 def zero_pad_subj_num(subj_num):
@@ -351,7 +352,18 @@ def zero_pad_subj_num(subj_num):
 
 def main():
 
+	global log_file, enable_interactivity
+
+	# run script automatically or interactively
+	if len(sys.argv) > 1:
+		if sys.argv[1] == '-a':
+			enable_interactivity = False
+
+	log_file = init_log_file()
+
 	upload_data()
+
+	log_file.close()
 
 
 if __name__ == '__main__':

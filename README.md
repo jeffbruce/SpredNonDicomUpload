@@ -9,7 +9,7 @@ This is some brief documentation for the work I did for the Mouse Imaging Centre
 
 Right now the upload process uses an R script to generate the subject metadata, then uses a Python script to map the subject metadata to the XNAT XML schema, to extract other metadata, and to structure HTTP PUT web service calls to the XNAT REST API. 
 
-To learn how to use these scripts, look at the Workflow below and make sure you have everything installed listed in the Dependencies section.  Development Notes / Rationales contains information for developers who might be interested in extending this work (maybe OOP-ifying it).
+To learn how to use these scripts, look at the Workflow below and make sure you have everything installed listed in the Dependencies section.  Development Notes / Rationales contains information for developers who might be interested in extending this work (maybe writing proper classes instead of one long upload script).
 
 ## Workflow
 
@@ -19,7 +19,7 @@ To learn how to use these scripts, look at the Workflow below and make sure you 
 
 3. Modify globals in the Python script to specify the project name, site code, SPReD url, and folders that you want to upload to SPReD.
 
-4. Run the Python script, supplying your username and password, and it will upload subjects, sessions, scans, and any associated files to the project and site at the specified SPReD url.  By default, the script is interactive to help ensure that the proper files are uploaded.
+4. Run the Python script, supplying your username and password, and it will upload subjects, sessions, scans, and any associated files to the project and site at the specified SPReD url.  By default, the script is interactive to help ensure that the proper files are uploaded.  To disable interactivity and instead run the script automatically, use the command: python SpredNonDicomUpload.py -a
 
 ## Dependencies
 
@@ -40,16 +40,16 @@ This section describes some MINC fields that were difficult to map to the allowa
 - fov and matrix fields in XNAT are two dimensional (only x and y), however, all images at MICe are 3 dimensional without slices
 	  - what is the best way of handling this behaviour?  possibly supply z dimension in the `frames` XNAT XML element
 - duration goes up to a maximum of around 16 hours
-    - for some reason XNAT is not accepting well-formed xs:duration values
+    - there is a bug in XNAT for handling xs:duration values
 - it's not clear what fields to use for mouse background, strain, and genotype
 
 #### Rationales
 
-- upload process is now interactive
-    - when you're uploading such a large amount of data someone should probably oversee the process
-    - the script is safe to run without interactivity because it will automatically shut off if it fails during one step of the process, and will notify the user what subject and action (create subject, session, scan, resource, file) that it failed on
-	  - a bit torn on whether interactive mode should be optional or a command line argument
-- decided not to refactor methods so that instead of passing spred id and MINC filename around, you pass an object or namedtuple, because it would just be extra work
+- upload process is interactive by default
+    - any time large amounts of data are downloaded/uploaded someone should probably oversee the process
+    - there is a command line argument to disable interactivity
+        - this is safe because the script will automatically shut off if it fails during one step of the process, and it will notify the user what subject and action (create subject, session, scan, resource, file) that it failed on
+- decided not to refactor methods to pass an object or namedtuple instead of passing spred id and MINC filename around, because it would just be extra work
 - extending this module to work with any non-DICOM data would be difficult
 	  - however, this script is still a useful code skeleton for people with their own non-DICOM data
 	  - the python script hard codes a number of things:
@@ -57,26 +57,27 @@ This section describes some MINC fields that were difficult to map to the allowa
 		    2. metadata is generated with a separate R script, and must conform to a specific schema in order to qualify as a valid upload
 	  - all of the QA is specific to MICe
 - a log file is produced in a subdirectory called 'logs' every time the script is run, allowing one to quickly see the actual files that were uploaded
-- the bottleneck of this script is the actual uploading of the files because some of the files are up to 500 MB
+- the bottleneck of this script is the actual uploading of the files, because some files can be as large as 500 MB
     - currently it takes about 10-15 seconds to upload a 75 MB file
     - future development could focus on speeding up this upload somehow (e.g. compression)
 
 ## TO DO
 
+- create custom variables for subjects to allow for strain, background, and genotype
 - delete a subject/session/scan prior to PUT?
-	  - what if an entity has extra content that it should not have?
+	  - an entity might have extra content that it should not have
     - what if the subject can't be deleted for some reason?  this has happened to me before, producing an HTTP 403 error
-- verify that the upload was successful (both the file and metadata are identical to the intended upload)
+- verify that the upload was successful (both metadata and actual file should be accurate)
     - how to check that metadata are accurate?
-	      - could always manually verify the metadata
-        - could GET the data and check it against what was added
+	      - manually verify the metadata
+        - GET the data and check it against what was added
     - how to check that the MINC file is accurate?
 	      - is there information contained in the HTTP response body that I can use?
 	      - use a checksum somehow?
         - performing a GET and checking would be somewhat expensive
 	      - manually spot check certain files with a trained eye?
 - extend script to work for reconstructed / pipeline processed images
-	  - most places would download the MINC files, convert to NIfTI then analyze with FSL
+	  - most places would download the MINC files, convert to NIfTI, then analyze with FSL
 
 <!---
 References
