@@ -28,6 +28,27 @@ all_subjects = data.frame(Filename=character(1),
                           height=numeric(1),
                           stringsAsFactors=FALSE)
 
+# enumeration for subject number (goes from 1 to 9 and then A to Z)
+numeric_enum = c('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 
+                  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 
+                  'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 
+                  'U', 'V', 'W', 'X', 'Y', 'Z')
+
+# takes a numeric index and enumeration mapping numeric indices (e.g. 13) to 
+# alphanumeric indices, and returns an alphanumeric index (e.g. 0D)
+# valid alphanumeric characters include [0..9A..Z] (no lower case letters) 
+create_alphanumeric_index <- function(numeric_index, numeric_enum) {
+  
+  ones = numeric_index %% 36
+  ones_digit = numeric_enum[ones+1]
+  tens = floor(numeric_index / 36)
+  tens_digit = numeric_enum[tens+1]
+  
+  new_numeric_index = paste(tens_digit, ones_digit, sep="")
+  
+  return(new_numeric_index)
+}
+
 # loop through strains and create SPReD subject metadata file
 for (strain_index in 1:dim(folders_to_upload)[1]) {
   
@@ -57,16 +78,10 @@ for (strain_index in 1:dim(folders_to_upload)[1]) {
       group = as.character(gf_data$Genotype[gf_index])
       subj_label = unlist(strsplit(x=MINC_file, split='[.]'))[1]
       
+      # need to account for additional files that may have been found by grep
       subj_num = MINC_file_index - missing_file_count
-      
-      if (subj_num < 10) {
-        subj_num = paste('0', as.character(subj_num), sep="")
-      } else {
-        subj_num = as.character(subj_num)
-      }
-      
-      #browser()
-      
+      subj_num = create_subj_num(subj_num, subj_num_enum)
+
       subj_code = paste(strain_num, subj_num, sep="")
 
       all_subjects[dim(all_subjects)[1]+1,] = c(paste(folder_name,MINC_file,sep=""), group, subj_label, subj_code, '', '', '', '', strain_label, '', '')

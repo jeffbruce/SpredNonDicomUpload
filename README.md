@@ -15,7 +15,7 @@ To learn how to use these scripts, look at the Workflow below and make sure you 
 
 1. Specify folders that you want to upload along with their corresponding gf files and strain label (label used as a prefix for all the data files -- e.g. NLGN) in the GenerateSubjectMetadata.R script.  Run the script.
 
-2. Move the .csv file that is produced to the same directory where you will run the Python script.
+2. Move the .csv file that is produced to the same directory where you will run the Python script.  Open up the .csv file and add values to the columns for any additional metadata you might have (e.g. dob, gender, handedness, race, weight, height).
 
 3. Modify globals in the Python script to specify the project name, site code, SPReD url, and folders that you want to upload to SPReD.
 
