@@ -1,5 +1,5 @@
 ---
-output: html_document
+output: pdf_document
 ---
 # SpredNonDicomUpload Documentation
 
@@ -17,14 +17,16 @@ To learn how to use these scripts, look at the Workflow below and make sure you 
 
 2. Move the .csv file that is produced to the same directory where you will run the Python script.  Open up the .csv file and add values to the columns for any additional metadata you might have (e.g. dob, gender, handedness, race, weight, height).
 
-3. Modify globals in the Python script to specify the project name, site code, SPReD url, and folders that you want to upload to SPReD.
+3. Modify globals in the Python script contained at the top of the file to specify the project name, site code, SPReD url, and other metadata about the upload.
 
 4. Run the Python script, supplying your username and password, and it will upload subjects, sessions, scans, and any associated files to the project and site at the specified SPReD url.  By default, the script is interactive to help ensure that the proper files are uploaded.  To disable interactivity and instead run the script automatically, use the command: python SpredNonDicomUpload.py -a
+
+5. Log on to SPReD and verify that the subjects, sessions, scans, and associated files were created successfully.  
 
 ## Dependencies
 
 - mincinfo from minc-tools (https://github.com/BIC-MNI/minc-tools)
-- python packages (datetime, numpy, os, pandas, requests, subprocess, sys)
+- python packages (datetime, numpy, os, pandas, requests, subprocess, sys, zipfile)
 
 ## Development Notes / Rationales
 
@@ -53,17 +55,17 @@ This section describes some MINC fields that were difficult to map to the allowa
 - extending this module to work with any non-DICOM data would be difficult
 	  - however, this script is still a useful code skeleton for people with their own non-DICOM data
 	  - the python script hard codes a number of things:
-		    1. there is only 1 project, 1 session, 1 scan, 1 resource, and 1 file associated with a subject
+		    1. there is only 1 project, 1 session, 1 scan, 1 resource, and 1 file associated with a subject (potentially with reconstructions)
 		    2. metadata is generated with a separate R script, and must conform to a specific schema in order to qualify as a valid upload
 	  - all of the QA is specific to MICe
 - a log file is produced in a subdirectory called 'logs' every time the script is run, allowing one to quickly see the actual files that were uploaded
-- the bottleneck of this script is the actual uploading of the files, because some files can be as large as 500 MB
+- the bottleneck of this script is the actual uploading of the files, because some files can be as large as 250 MB
     - currently it takes about 10-15 seconds to upload a 75 MB file
-    - future development could focus on speeding up this upload somehow (e.g. compression)
 
 ## TO DO
 
 - create custom variables for subjects to allow for strain, background, and genotype
+    - SPReD team decided against this because working with custom data types is quite difficult
 - delete a subject/session/scan prior to PUT?
 	  - an entity might have extra content that it should not have
     - what if the subject can't be deleted for some reason?  this has happened to me before, producing an HTTP 403 error

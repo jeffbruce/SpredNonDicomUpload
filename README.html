@@ -58,22 +58,23 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <h2>Introduction</h2>
 <p>This is some brief documentation for the work I did for the Mouse Imaging Centre (MICe) and the Ontario Brain Institute (OBI). The OBI is working on a big data solution for neuroscience data, called <a href="https://braincode.ca/">Brain-CODE</a>, and it was my job to upload approximately 50 GB of mouse brain imaging data from MICe into the imaging side of Brain-CODE. The imaging side of Brain-CODE uses the Stroke Patient Recovery Research Database (SPReD).</p>
 <p>Right now the upload process uses an R script to generate the subject metadata, then uses a Python script to map the subject metadata to the XNAT XML schema, to extract other metadata, and to structure HTTP PUT web service calls to the XNAT REST API.</p>
-<p>To learn how to use these scripts, look at the Workflow below and make sure you have everything installed listed in the Dependencies section. Development Notes / Rationales contains information for developers who might be interested in extending this work (maybe OOP-ifying it).</p>
+<p>To learn how to use these scripts, look at the Workflow below and make sure you have everything installed listed in the Dependencies section. Development Notes / Rationales contains information for developers who might be interested in extending this work (maybe writing proper classes instead of one long upload script).</p>
 </div>
 <div id="workflow" class="section level2">
 <h2>Workflow</h2>
 <ol style="list-style-type: decimal">
 <li><p>Specify folders that you want to upload along with their corresponding gf files and strain label (label used as a prefix for all the data files – e.g. NLGN) in the GenerateSubjectMetadata.R script. Run the script.</p></li>
-<li><p>Move the .csv file that is produced to the same directory where you will run the Python script.</p></li>
-<li><p>Modify globals in the Python script to specify the project name, site code, SPReD url, and folders that you want to upload to SPReD.</p></li>
-<li><p>Run the Python script, supplying your username and password, and it will upload subjects, sessions, scans, and any associated files to the project and site at the specified SPReD url. By default, the script is interactive to help ensure that the proper files are uploaded.</p></li>
+<li><p>Move the .csv file that is produced to the same directory where you will run the Python script. Open up the .csv file and add values to the columns for any additional metadata you might have (e.g. dob, gender, handedness, race, weight, height).</p></li>
+<li><p>Modify globals in the Python script contained at the top of the file to specify the project name, site code, SPReD url, and other metadata about the upload.</p></li>
+<li><p>Run the Python script, supplying your username and password, and it will upload subjects, sessions, scans, and any associated files to the project and site at the specified SPReD url. By default, the script is interactive to help ensure that the proper files are uploaded. To disable interactivity and instead run the script automatically, use the command: python SpredNonDicomUpload.py -a</p></li>
+<li><p>Log on to SPReD and verify that the subjects, sessions, scans, and associated files were created successfully.</p></li>
 </ol>
 </div>
 <div id="dependencies" class="section level2">
 <h2>Dependencies</h2>
 <ul>
 <li>mincinfo from minc-tools (<a href="https://github.com/BIC-MNI/minc-tools">https://github.com/BIC-MNI/minc-tools</a>)</li>
-<li>python packages (datetime, numpy, os, pandas, requests, subprocess, sys)</li>
+<li>python packages (datetime, numpy, os, pandas, requests, subprocess, sys, zipfile)</li>
 </ul>
 </div>
 <div id="development-notes-rationales" class="section level2">
@@ -97,7 +98,7 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 </ul></li>
 <li>duration goes up to a maximum of around 16 hours
 <ul>
-<li>for some reason XNAT is not accepting well-formed xs:duration values</li>
+<li>there is a bug in XNAT for handling xs:duration values</li>
 </ul></li>
 <li>it’s not clear what fields to use for mouse background, strain, and genotype</li>
 </ul>
@@ -105,24 +106,25 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <div id="rationales" class="section level4">
 <h4>Rationales</h4>
 <ul>
-<li>upload process is now interactive
+<li>upload process is interactive by default
 <ul>
-<li>when you’re uploading such a large amount of data someone should probably oversee the process</li>
-<li>the script is safe to run without interactivity because it will automatically shut off if it fails during one step of the process, and will notify the user what subject and action (create subject, session, scan, resource, file) that it failed on</li>
-<li>a bit torn on whether interactive mode should be optional or a command line argument</li>
+<li>any time large amounts of data are downloaded/uploaded someone should probably oversee the process</li>
+<li>there is a command line argument to disable interactivity
+<ul>
+<li>this is safe because the script will automatically shut off if it fails during one step of the process, and it will notify the user what subject and action (create subject, session, scan, resource, file) that it failed on</li>
 </ul></li>
-<li>decided not to refactor methods so that instead of passing spred id and MINC filename around, you pass an object or namedtuple, because it would just be extra work</li>
+</ul></li>
+<li>decided not to refactor methods to pass an object or namedtuple instead of passing spred id and MINC filename around, because it would just be extra work</li>
 <li>extending this module to work with any non-DICOM data would be difficult
 <ul>
 <li>however, this script is still a useful code skeleton for people with their own non-DICOM data</li>
-<li>the python script hard codes a number of things: 1. there is only 1 project, 1 session, 1 scan, 1 resource, and 1 file associated with a subject 2. metadata is generated with a separate R script, and must conform to a specific schema in order to qualify as a valid upload</li>
+<li>the python script hard codes a number of things: 1. there is only 1 project, 1 session, 1 scan, 1 resource, and 1 file associated with a subject (potentially with reconstructions) 2. metadata is generated with a separate R script, and must conform to a specific schema in order to qualify as a valid upload</li>
 <li>all of the QA is specific to MICe</li>
 </ul></li>
 <li>a log file is produced in a subdirectory called ‘logs’ every time the script is run, allowing one to quickly see the actual files that were uploaded</li>
-<li>the bottleneck of this script is the actual uploading of the files because some of the files are up to 500 MB
+<li>the bottleneck of this script is the actual uploading of the files, because some files can be as large as 250 MB
 <ul>
 <li>currently it takes about 10-15 seconds to upload a 75 MB file</li>
-<li>future development could focus on speeding up this upload somehow (e.g. compression)</li>
 </ul></li>
 </ul>
 </div>
@@ -130,6 +132,10 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <div id="to-do" class="section level2">
 <h2>TO DO</h2>
 <ul>
+<li>create custom variables for subjects to allow for strain, background, and genotype
+<ul>
+<li>SPReD team decided against this because working with custom data types is quite difficult</li>
+</ul></li>
 <li>delete a subject/session/scan prior to PUT?
 <ul>
 <li>an entity might have extra content that it should not have</li>
@@ -152,7 +158,7 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 </ul></li>
 <li>extend script to work for reconstructed / pipeline processed images
 <ul>
-<li>most places would download the MINC files, convert to NIfTI then analyze with FSL</li>
+<li>most places would download the MINC files, convert to NIfTI, then analyze with FSL</li>
 </ul></li>
 </ul>
 <!---

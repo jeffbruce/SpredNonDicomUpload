@@ -8,6 +8,8 @@ import pandas as pd
 import requests
 import subprocess
 import sys
+import zipfile
+import zlib
 
 
 # SET GLOBALS
@@ -49,7 +51,10 @@ enable_interactivity = True
 
 def check_HTTP_status_code(action, response, subj_SPReD_ID):
 	'''Check that the web service request was successful.  
-	If it wasn't, exit program and print out error details.'''
+	If it wasn't, exit program and print out error details.
+	action is the action that was being performed when the error occurred,
+	response is the response object returned by the REST API call,
+	subj_SPReD_ID is well-formatted SPReD ID of the subject.'''
 
 	if response.status_code == 401:
 		print 'You probably entered an invalid username or password.'
@@ -66,7 +71,94 @@ def check_HTTP_status_code(action, response, subj_SPReD_ID):
 def create_scan(MINC_filename, subj_SPReD_ID, session_name):
 	'''Creates a scan in SPReD, including the upload of any associated files.'''
 
-	# add constant key-values here
+	# Create scan
+	scan_params = get_scan_metadata(MINC_filename)
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num))
+	resp = session.put(url, params=scan_params)
+	check_HTTP_status_code('creating scan', resp, subj_SPReD_ID)
+
+	# Create resource
+	resource_params = get_resource_metadata()
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' + str(int(resource_num))
+	resp = session.put(url, params=resource_params)
+	check_HTTP_status_code('creating resource', resp, subj_SPReD_ID)
+
+	# Upload the distortion corrected image 
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' +  str(int(resource_num)) + '/files/'
+	zip_name = subj_SPReD_ID + '_distortion_corrected' + '.zip'
+	upload_zip(file_names=[MINC_filename], zip_name=zip_name, url=url, subj_SPReD_ID=subj_SPReD_ID, action='upload distortion corrected')
+
+	# Upload additional registrations of an image
+	file_names = get_registration_files(MINC_filename)
+	# url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' +  str(int(resource_num)) + '/files/'
+	# zip_name = subj_SPReD_ID + '_registrations' + '.zip'
+	# upload_zip(file_names=MINC_filename, zip_name= url=url, subj_SPReD_ID=subj_SPReD_ID)
+
+	# Notify user of success and print information about the upload to logfile
+	notify_user_of_success(subj_SPReD_ID, MINC_filename)
+	print_to_logfile(subj_SPReD_ID, MINC_filename)
+
+
+def create_session(MINC_filename, subj_SPReD_ID, session_name):
+	'''Creates a session in SPReD.'''
+
+	session_params = get_session_metadata(MINC_filename, session_name)
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name
+	resp = session.put(url, params=session_params)
+	check_HTTP_status_code('creating session', resp, subj_SPReD_ID)
+
+
+def create_subject(MINC_filename, subj_SPReD_ID, row):
+	'''Creates a subject in SPReD.
+	row is a record in a pandas data frame.
+	Don't actually need MINC_filename but it's there for consistency.'''
+
+	subj_params = get_subject_metadata(row)
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID
+	resp = session.put(url, params=subj_params)
+	check_HTTP_status_code('creating subject', resp, subj_SPReD_ID)
+
+
+def get_minc_field(field_name, MINC_filename):
+	'''Calls a subprocess to extract a field's value from a MINC file (MINC_filename).
+	The mincinfo command is a specific command offered by MINC tools.'''
+
+	value = None
+
+	try:
+		value = subprocess.check_output(["mincinfo", "-attvalue", field_name, MINC_filename])
+		value = value.rstrip()
+	except subprocess.CalledProcessError:
+		pass
+
+	return value
+
+
+def get_registration_files(MINC_filename):
+	'''Given a filename of a distortion corrected mouse image, return a list of all registration files
+	to be uploaded associated with the original file (e.g. lsq6, lsq12, nlin, processed)'''
+
+	# can't just look for a 'processed' folder because there might be several processed folders
+
+	a = 1
+
+
+def get_resource_metadata():
+	'''Populate resource metadata.'''
+
+	resource_params = {
+		'format': file_type,
+		'content': scan_type
+	}
+
+	return resource_params
+
+
+def get_scan_metadata(MINC_filename):
+	'''Extract scan metadata from a MINC file (MINC_filename) and return a 
+	dictionary mapping XNAT XML (keys) to MINC metadata (values).'''
+
+	# constant key-value pairs go here which are the same for every subject
 	scan_params = {
 		'xsiType': 'xnat:mrScanData',
 		'xnat:mrScanData/type': scan_type,  # double check that this is the format SPReD wants
@@ -74,11 +166,6 @@ def create_scan(MINC_filename, subj_SPReD_ID, session_name):
 		'xnat:mrScanData/scanner': scanner,
 		'xnat:mrScanData/scanner/manufacturer': scanner_manufacturer,
 		'xnat:mrScanData/fieldStrength': field_strength
-	}
-
-	resource_params = {
-		'format': file_type,
-		'content': scan_type
 	}
 
 	# # retrieve relevant fields from the mincheader
@@ -132,31 +219,12 @@ def create_scan(MINC_filename, subj_SPReD_ID, session_name):
 	if file_type is not None:
 		scan_params['xnat:mrScanData/parameters/imageType'] = file_type
 
-	# Create scan
-	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num))
-	resp = session.put(url, params=scan_params)
-
-	check_HTTP_status_code('creating scan', resp, subj_SPReD_ID)
-
-	# Create resource
-	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' + str(int(resource_num))
-	resp = session.put(url, params=resource_params)
-
-	check_HTTP_status_code('creating resource', resp, subj_SPReD_ID)
-
-	# Upload a file
-	file_to_upload = {'file':open(MINC_filename, 'rb')}
-	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' +  str(int(resource_num)) + '/files/'
-	resp = session.post(url, files=file_to_upload, stream=True)
-
-	check_HTTP_status_code('creating file', resp, subj_SPReD_ID)
-
-	notify_user_of_success(subj_SPReD_ID, MINC_filename)
-	print_to_logfile(subj_SPReD_ID, MINC_filename)
+	return scan_params
 
 
-def create_session(MINC_filename, subj_SPReD_ID, session_name):
-	'''Creates a session in SPReD.'''
+def get_session_metadata(MINC_filename, session_name):
+	'''Extract session metadata from a MINC file (MINC_filename) and return a 
+	dictionary mapping XNAT XML (keys) to MINC metadata (values).'''
 
 	# add constant key-values here
 	session_params = {
@@ -179,7 +247,7 @@ def create_session(MINC_filename, subj_SPReD_ID, session_name):
 	etl = float(get_minc_field('vnmr:etl', MINC_filename))
 	
 	# duration isn't handled properly for some reason
-	# pretty sure this is a bug on XNAT's end -- I'll find out soon
+	# this is a confirmed bug on XNAT's end
 	# if ni is not None and nf is not None and nfid is not None and nt is not None and tr is not None and etl is not None:
 	# 	duration_secs = int(ni) * int(nf) * int(nfid) * int(nt) * int(tr)  / int(etl)
 	# 	# format duration value into xs:duration format
@@ -212,16 +280,12 @@ def create_session(MINC_filename, subj_SPReD_ID, session_name):
 	if operator is not None:
 		session_params['xnat:mrSessionData/operator'] = operator
 
-	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name
-
-	resp = session.put(url, params=session_params)
-
-	check_HTTP_status_code('creating session', resp, subj_SPReD_ID)
+	return session_params
 
 
-def create_subject(MINC_filename, subj_SPReD_ID, row):
-	'''Creates a subject in SPReD.
-	row is a record in a pandas data frame.'''
+def get_subject_metadata(row):
+	'''Extract subject metadata from a row from a pandas data frame (row) and create a
+	dictionary mapping XNAT XML (keys) to MINC metadata (values).'''
 
 	subj_params = {
 		'pi_firstname': pi_firstname,
@@ -245,25 +309,7 @@ def create_subject(MINC_filename, subj_SPReD_ID, row):
 	if pd.notnull(row['height']):
 		subj_params['height'] = row['height']
 
-	url = base_url + project_name + '/subjects/' + subj_SPReD_ID
-	resp = session.put(url, params=subj_params)
-
-	check_HTTP_status_code('creating subject', resp, subj_SPReD_ID)
-
-
-def get_minc_field(field_name, MINC_filename):
-	'''Calls a subprocess to extract a field's value from a MINC file (MINC_filename).
-	The mincinfo command is a specific command offered by MINC tools.'''
-
-	value = None
-
-	try:
-		value = subprocess.check_output(["mincinfo", "-attvalue", field_name, MINC_filename])
-		value = value.rstrip()
-	except subprocess.CalledProcessError:
-		pass
-
-	return value
+	return subj_params
 
 
 def init_log_file():
@@ -339,6 +385,29 @@ def upload_data():
 			else:
 				print 'Please enter either y or n'
 
+
+def upload_zip(file_names, zip_name, url, subj_SPReD_ID, action):
+	'''Given a list of file names (file_names), the zip file to output to (zip_name), a url to upload the 
+	files to (url), a subject ID associated with those files (subj_SPReD_ID), and an action (action), create 
+	a .zip archive of files in file_names and make the web service call to put the files on SPReD.'''
+
+	# Create .zip file containing the all files in the file list to be uploaded.
+	# This adds an additional time step of creating a .zip file, so hopefully this method speeds things up.
+	# Can test speed by comparing current iteration of project vs. previous iteration on github.
+	with zipfile.ZipFile(file=zip_name, mode='a') as zf:
+		for file_name in file_names:
+			zf.write(filename=file_name, compress_type=zipfile.ZIP_DEFLATED)
+
+	# Upload a file
+	file_to_upload = {'file':open(zip_name, 'rb')}
+	resp = session.post(url, files=file_to_upload, stream=True)
+	check_HTTP_status_code(action, resp, subj_SPReD_ID)
+
+	# Delete the .zip file created to upload once it's done uploading
+	os.remove(zip_name)
+
+	# Possibly return success/fail
+	
 
 def zero_pad_subj_num(subj_num):
 	'''Left pad the subject number with an appropriate number of zeros to fit the SPReD naming convention.
