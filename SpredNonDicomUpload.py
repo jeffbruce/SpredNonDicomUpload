@@ -5,6 +5,7 @@ import math
 import os
 import numpy as np
 import pandas as pd
+import pdb
 import requests
 import subprocess
 import sys
@@ -23,7 +24,7 @@ session_num = '01'
 scan_num = '01'
 modality = 'MR'
 field_strength = '7.0T'
-acquisition_site = 'Mouse Imaging Centre (MICe)'
+acquisition_site = 'Mouse Imaging Centre (MICe)'@get
 scanner = 'Agilent 7T Animal System'
 scanner_manufacturer = 'Agilent'
 scan_type = 'T2 FSE 3D MICE EX-VIVO'
@@ -45,8 +46,8 @@ subject_metadata_file = 'SubjectMetadata.csv'
 # file handler to record information about specific subjects that were uploaded to SPReD
 # this is initialized in init_log_file
 log_file = 0
-# disable interactivity?
-enable_interactivity = True
+# upload is interactive by default
+automatic_upload = False
 
 
 def check_HTTP_status_code(action, response, subj_SPReD_ID):
@@ -58,6 +59,12 @@ def check_HTTP_status_code(action, response, subj_SPReD_ID):
 
 	if response.status_code == 401:
 		print 'You probably entered an invalid username or password.'
+
+	# for some reason the user doesn't have permission to delete the subject
+	# ask admin to delete subject, and skip subject for the time being
+	if response.status_code == 403 and action == 'deleting subject':
+		print 'You do not have permission to delete subject ' + subj_SPReD_ID
+		print 'Ask administrator of SPReD project to delete subject ' + subj_SPReD_ID
 
 	if response.status_code != 200 and response.status_code != 201:
 		print 'Error processing subject: ' + subj_SPReD_ID
@@ -88,13 +95,20 @@ def create_scan(MINC_filename, subj_SPReD_ID, session_name):
 	zip_name = subj_SPReD_ID + '_distortion_corrected' + '.zip'
 	upload_zip(file_names=[MINC_filename], zip_name=zip_name, url=url, subj_SPReD_ID=subj_SPReD_ID, action='upload distortion corrected')
 
+	# Create resource
+	resource_params = get_resource_metadata()
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' + str(int(resource_num) + 1)
+	resp = session.put(url, params=resource_params)
+	check_HTTP_status_code('creating resource', resp, subj_SPReD_ID)
+
 	# Upload additional registrations of an image
 	file_names = get_registration_files(MINC_filename)
-	# url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' +  str(int(resource_num)) + '/files/'
-	# zip_name = subj_SPReD_ID + '_registrations' + '.zip'
-	# upload_zip(file_names=MINC_filename, zip_name= url=url, subj_SPReD_ID=subj_SPReD_ID)
+	# pdb.set_trace()
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '/experiments/' + session_name + '/scans/scan' + str(int(scan_num)) + '/resources/' +  str(int(resource_num) + 1) + '/files/'
+	zip_name = subj_SPReD_ID + '_registrations' + '.zip'
+	upload_zip(file_names=file_names, zip_name=zip_name, url=url, subj_SPReD_ID=subj_SPReD_ID, action='upload resampled and stats registrations')
 
-	# Notify user of success and print information about the upload to logfile
+	# Notify user of success and print information about the upload to a logfile
 	notify_user_of_success(subj_SPReD_ID, MINC_filename)
 	print_to_logfile(subj_SPReD_ID, MINC_filename)
 
@@ -113,6 +127,12 @@ def create_subject(MINC_filename, subj_SPReD_ID, row):
 	row is a record in a pandas data frame.
 	Don't actually need MINC_filename but it's there for consistency.'''
 
+	# DELETE the subject if they exist already
+	url = base_url + project_name + '/subjects/' + subj_SPReD_ID + '?removeFiles=true'
+	resp = session.delete(url)
+	check_HTTP_status_code('deleting subject', resp, subj_SPReD_ID)
+
+	# now create the subject with PUT
 	subj_params = get_subject_metadata(row)
 	url = base_url + project_name + '/subjects/' + subj_SPReD_ID
 	resp = session.put(url, params=subj_params)
@@ -136,11 +156,37 @@ def get_minc_field(field_name, MINC_filename):
 
 def get_registration_files(MINC_filename):
 	'''Given a filename of a distortion corrected mouse image, return a list of all registration files
-	to be uploaded associated with the original file (e.g. lsq6, lsq12, nlin, processed)'''
+	to be uploaded associated with the original file (e.g. lsq6, lsq12, nlin, processed).'''
 
 	# can't just look for a 'processed' folder because there might be several processed folders
+	# see other notes on this matter
 
-	a = 1
+	path_tuple = os.path.split(MINC_filename)
+	basename = path_tuple[1]
+	current_dir = path_tuple[0]
+	parent_dir = os.path.dirname(current_dir)
+	grandparent_dir = os.path.dirname(parent_dir)
+	all_items = os.listdir(grandparent_dir)
+
+	for item in all_items:
+		if 'processed' in item:
+			processed_dir = os.path.join(grandparent_dir, item)
+			break
+
+	processed_subj_dir = os.path.join(processed_dir, basename[0:-4])
+	resampled_dir = os.path.join(processed_subj_dir, 'resampled')
+	stats_dir = os.path.join(processed_subj_dir, 'stats-volumes')
+	registration_files = []
+
+	resampled_files = os.listdir(resampled_dir)
+	for registration in resampled_files:
+		registration_files.append(os.path.join(resampled_dir, registration))
+
+	stats_files = os.listdir(stats_dir)
+	for registration in stats_files:
+		registration_files.append(os.path.join(stats_dir, registration))
+
+	return registration_files
 
 
 def get_resource_metadata():
@@ -359,31 +405,37 @@ def upload_data():
 	subject_metadata = pd.read_table(filepath_or_buffer=subject_metadata_file, dtype={'Filename': str}, sep=',')
 
 	# loop through subject metadata and call web service to create subject, session, and scan
+	# use status_code variable to keep track of whether the upload was successful
 	for index, row in subject_metadata.iterrows():
 
 		subj_num = str(row['SubjNum'])
-
-		# need to left pad the subject number with zeros
-		subj_num = zero_pad_subj_num(subj_num)
+		subj_num = zero_pad_subj_num(subj_num)  # format the subject number to 4 digits
 
 		MINC_filename = row['Filename']
 		subj_SPReD_ID = project_name + '_' + subj_num
 		session_name = subj_SPReD_ID + '_' + visit_num + '_' + 'SE' + session_num + '_' + modality
 		are_you_sure = ''
 
-		while are_you_sure != 'y' and are_you_sure != 'n':
-			if enable_interactivity == False:
-				are_you_sure = 'y'
-			else:
-				are_you_sure = raw_input("Create subject %s" % subj_SPReD_ID + " with file %s? (y/n): " % MINC_filename)
-			if are_you_sure == 'y':
-				create_subject(MINC_filename, subj_SPReD_ID, row)
-				create_session(MINC_filename, subj_SPReD_ID, session_name)
-				create_scan(MINC_filename, subj_SPReD_ID, session_name)
-			elif are_you_sure == 'n':
-				pass
-			else:
-				print 'Please enter either y or n'
+		if os.path.exists(MINC_filename):
+
+			# give user option of skipping upload of particular subjects
+			while are_you_sure != 'y' and are_you_sure != 'n':
+				if automatic_upload == True:
+					are_you_sure = 'y'
+				else:
+					are_you_sure = raw_input("Create subject %s" % subj_SPReD_ID + " with file %s? (y/n): " % MINC_filename)
+				if are_you_sure == 'y':
+					create_subject(MINC_filename, subj_SPReD_ID, row)
+					create_session(MINC_filename, subj_SPReD_ID, session_name)
+					create_scan(MINC_filename, subj_SPReD_ID, session_name)
+				elif are_you_sure == 'n':
+					pass
+				else:
+					print 'Please enter either y or n'
+
+		else:
+
+			print MINC_filename + ' does not exist!  No subject data uploaded.'
 
 
 def upload_zip(file_names, zip_name, url, subj_SPReD_ID, action):
@@ -421,12 +473,12 @@ def zero_pad_subj_num(subj_num):
 
 def main():
 
-	global log_file, enable_interactivity
+	global log_file, automatic_upload
 
 	# run script automatically or interactively
 	if len(sys.argv) > 1:
 		if sys.argv[1] == '-a':
-			enable_interactivity = False
+			automatic_upload = True
 
 	log_file = init_log_file()
 
