@@ -63,7 +63,7 @@ This section describes some MINC fields that were difficult to map to the allowa
     - currently it takes about 10-15 seconds to upload a 75 MB file
 
 ## TO DO
-
+# 
 - create custom variables for subjects to allow for strain, background, and genotype
     - SPReD team decided against this because working with custom data types is quite difficult
 - delete a subject/session/scan prior to PUT?

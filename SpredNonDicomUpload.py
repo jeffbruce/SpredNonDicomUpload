@@ -1,7 +1,5 @@
 # !/usr/bin/python
 
-# from collections import namedtuple
-
 import datetime
 import math
 import os
@@ -14,15 +12,53 @@ import sys
 import zipfile
 import zlib
 
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
+
+# from collections import namedtuple
+
+try: import simplejson as json
+except ImportError: import json
+
+from jeffs_utilities import JeffUtility
+
 spred_log_file = 0
+
+
+def assign_next_available_strain_code(server_uploaded_strains, cur_strain_count):
+	'''
+	Summary:
+		Retrieve the next available logical strain code to use for a given SPReD project.
+	Args:
+		server_uploaded_strains: A dictionary mapping strain labels currently existing in the project to their strain codes.
+		cur_strain_count: An integer representing the strain number to start counting from.  This argument is used to provide a slight speed up over starting at 1 each time.
+	Returns:
+		strain_code: A string representing the next available strain code which will be used for the current strain being uploaded.
+	'''
+
+	used_strain_codes = server_uploaded_strains.values()
+	used_strain_codes.sort()
+
+	while True:
+		strain_code =  JeffUtility.convert_decimal_to_base(cur_strain_count, 36)
+		strain_code = zero_pad_num(strain_code, 2)
+
+		if strain_code in server_uploaded_strains:
+			cur_strain_count += 1
+		else:
+			return strain_code
+
 
 def check_HTTP_status_code(action, response, subj_spred_ID):
 	'''
-	Check that the web service request was successful.  
-	If it wasn't, exit program and print out error details.
-	action is the action that was being performed when the error occurred,
-	response is the response object returned by the REST API call,
-	subj_spred_ID is the well-formatted SPReD ID of the subject.
+	Summary:
+		Given a response from a web service call, and an action (e.g. creating subject), outputs a meaningful error message to the user and to the log file.
+	Args:
+		action: A string representing the action that was taken in the program (e.g. creating subject, deleting subject, etc.).
+		response: The result of a web service call.
+		subj_spred_ID: The well-formatted SPReD ID for the subject.
 	'''
 
 	if response.status_code == 401:
@@ -43,7 +79,7 @@ def check_HTTP_status_code(action, response, subj_spred_ID):
 		sys.exit()
 
 
-def create_scan(MINC_filename, subj_spred_ID, session_name, project_constants):
+def create_scan(MINC_filename, subj_spred_ID, session_name, project_constants, processed_subj_dir):
 	'''
 	Summary:
 		Creates a scan in SPReD, including the upload of any associated files.
@@ -72,14 +108,14 @@ def create_scan(MINC_filename, subj_spred_ID, session_name, project_constants):
 	upload_zip(file_names=[MINC_filename], zip_name=zip_name, url=url, subj_spred_ID=subj_spred_ID, action='upload distortion corrected', project_constants=project_constants)
 
 	# Create resource
+	# Really the resource number should be a running count
 	resource_params = get_resource_metadata(project_constants)
 	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' + str(int(project_constants['resource_num']) + 1)
 	resp = project_constants['session'].put(url, params=resource_params)
 	check_HTTP_status_code('creating resource', resp, subj_spred_ID)
 
 	# Upload additional registrations of an image
-	file_names = get_registration_files(MINC_filename)
-	# pdb.set_trace()
+	file_names = get_registration_files(processed_subj_dir)
 	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' +  str(int(project_constants['resource_num']) + 1) + '/files/'
 	zip_name = subj_spred_ID + '_registrations' + '.zip'
 	upload_zip(file_names=file_names, zip_name=zip_name, url=url, subj_spred_ID=subj_spred_ID, action='upload resampled and stats registrations', project_constants=project_constants)
@@ -134,6 +170,49 @@ def create_subject(MINC_filename, subj_spred_ID, row, project_constants):
 	check_HTTP_status_code('creating subject', resp, subj_spred_ID)
 
 
+def generate_subject_IDs(project_constants, server_uploaded_strains, subject_metadata):
+	'''
+	Summary:
+		Generates SPReD IDs for the subjects specified in the subject metadata DataFrame.
+	Args:
+		project_constants: A dictionary containing metadata related to the project and upload.
+		server_uploaded_strains: A dictionary mapping strain labels currently existing in the project to their strain codes.
+		subject_metadata: A pandas DataFrame containing information about each individual subject to be inserted into the SPReD project.
+	Returns:
+		subject_metadata: An updated version of the DataFrame containing metadata about subjects with SPReD IDs added.
+	'''
+
+	# Subject and strain numbers start at 1 (cur_strain_count is incremented near the beginning of the for loop, so it's effectively 1).
+	cur_subj_count = 1
+	cur_strain_count = 0
+	prev_ethnicity = ''
+
+	# Loop through each subject slated for upload, generate an appropriate ID for them, then populate the DataFrame.
+	for index, row in subject_metadata.iterrows():
+
+		strain_label = row['ethnicity']
+
+		if prev_ethnicity != strain_label:
+			cur_subj_count = 1
+			cur_strain_count += 1
+
+		subj_num =  JeffUtility.convert_decimal_to_base(str(cur_subj_count), 36)
+		subj_num = zero_pad_num(subj_num, 2)
+
+		if strain_label in server_uploaded_strains:
+			strain_code = server_uploaded_strains[strain_label]
+		else:
+			strain_code = assign_next_available_strain_code(server_uploaded_strains, cur_strain_count)
+			server_uploaded_strains[strain_label] = strain_code
+		
+		subject_metadata.loc[index, 'SubjNum'] = strain_code + subj_num
+
+		prev_ethnicity = strain_label
+		cur_subj_count += 1
+
+	return subject_metadata
+
+
 def get_minc_field(field_name, MINC_filename):
 	'''
 	Summary:
@@ -156,34 +235,33 @@ def get_minc_field(field_name, MINC_filename):
 	return value
 
 
-def get_registration_files(MINC_filename):
+def get_registration_files(processed_subj_dir):
 	'''
 	Summary:
-		Given a filename of a distortion corrected mouse image, return a list of all registration files to be uploaded associated with the original file (e.g. lsq6, lsq12, nlin, processed).
+		Given the processed image folder associated with a subject, return a list of all registration files to be uploaded associated with the original file (e.g. lsq6, lsq12, nlin, processed).
 	Args:
-		MINC_filename: The name of the MINC file being uploaded for which to find the associated registration files.
+		processed_subj_dir: The name of the processed folder associated with the subject currently being uploaded.  Reason this needs to be supplied is that there could be several processed folders per strain, so the user must specify which one to upload.
 	Returns:
 		registration_files: A list of associated registration files (lsq6, lsq12, nlin, stats_volumes) for a MINC file.
 	'''
 
-	# can't just look for a 'processed' folder because there might be several processed folders
-	# see other notes on this matter
+	# Old stuff which assumed that there was a single processed folder 2 folders above the distortion corrected images folder.
+	# path_tuple = os.path.split(MINC_filename)
+	# basename = path_tuple[1]
+	# current_dir = path_tuple[0]
+	# parent_dir = os.path.dirname(current_dir)
+	# grandparent_dir = os.path.dirname(parent_dir)
+	# all_items = os.listdir(grandparent_dir)
+	# for item in all_items:
+	# 	if 'processed' in item:
+	# 		processed_dir = os.path.join(grandparent_dir, item)
+	# 		break
+	# processed_subj_dir = os.path.join(processed_dir, basename[0:-4])
 
-	path_tuple = os.path.split(MINC_filename)
-	basename = path_tuple[1]
-	current_dir = path_tuple[0]
-	parent_dir = os.path.dirname(current_dir)
-	grandparent_dir = os.path.dirname(parent_dir)
-	all_items = os.listdir(grandparent_dir)
-
-	for item in all_items:
-		if 'processed' in item:
-			processed_dir = os.path.join(grandparent_dir, item)
-			break
-
-	processed_subj_dir = os.path.join(processed_dir, basename[0:-4])
 	resampled_dir = os.path.join(processed_subj_dir, 'resampled')
 	stats_dir = os.path.join(processed_subj_dir, 'stats-volumes')
+	
+	# List of all relevant registration files for a subject.
 	registration_files = []
 
 	resampled_files = os.listdir(resampled_dir)
@@ -288,6 +366,70 @@ def get_scan_metadata(MINC_filename, project_constants):
 		scan_params['xnat:mrScanData/parameters/imageType'] = project_constants['file_type']
 
 	return scan_params
+
+
+def get_server_subject_IDs(project_constants):
+	'''
+	Summary:
+		Retrieves the spred IDs currently in use in the project.
+	Args:
+		project_constants: A dictionary containing metadata related to the project and upload.
+	Returns:
+		server_subject_IDs: A list containing spred IDs currently in use in the project.
+	'''
+
+	url = project_constants['base_url']
+	project_url = url + project_constants['project_name']
+	subjects_url = os.path.join(project_url, 'subjects')
+
+	subjects_resp = project_constants['session'].get(subjects_url, params={'format': 'json'})
+	subjects_json = subjects_resp.json()
+	subjects_json = subjects_json['ResultSet']['Result']
+
+	server_subject_IDs = []
+
+	for subject in subjects_json:
+		spred_ID = subject['label']
+		spred_ID_str = str(spred_ID)  # strip unicode chars (u'') 
+		# spred_ID_str = spred_ID_str[-4:-2]  # get only the strain code labels
+		server_subject_IDs.append(spred_ID_str)
+
+	return server_subject_IDs
+
+
+def get_server_uploaded_strains(project_constants, server_subject_IDs):
+	'''
+	Summary:
+		Returns a dictionary to use to keep track of the strains which have already been uploaded and the SPReD strain codes used for those strains.
+	Args:
+		project_constants: A dictionary containing metadata related to the project and upload.
+		server_subject_IDs: A list containing all SPReD IDs in the project being uploaded to before initiating the upload.
+	Returns:
+		server_uploaded_strains: A dictionary mapping mouse strains currently in the SPReD project to their respective strain codes.
+	'''
+
+	server_uploaded_strains = {}
+
+	for subject in server_subject_IDs:
+
+		strain_code = subject[-4:-2]
+
+		url = os.path.join(project_constants['base_url'], project_constants['project_name'], 'subjects', subject)
+		subject_resp = project_constants['session'].get(url, params={'format': 'json'})
+		subject_json = subject_resp.json()
+
+		# Transforms the complex data structure into a generator which can be looped over as a list of lists.
+		subject_info = JeffUtility.dict_generator(subject_json)
+		
+		for line in subject_info:
+			# Get the json part that has ethnicity, and store the strain ethnicity in a list.
+			if 'ethnicity' in line:
+				ethnicity = str(line[-1])
+				if ethnicity not in server_uploaded_strains.keys():
+					server_uploaded_strains[ethnicity] = strain_code
+				break
+
+	return server_uploaded_strains
 
 
 def get_session_metadata(MINC_filename, session_name, project_constants):
@@ -475,7 +617,7 @@ def init_project_constants():
 
 
 def insert(original, new, pos):
-	'''Inserts new (char) inside original (string) at pos (int).'''
+	'''Inserts a char (new) inside original string (original) at the specified position (pos).'''
 
 	return original[:pos] + new + original[pos:]
 
@@ -489,28 +631,39 @@ def notify_user_of_success(subj_spred_ID, MINC_filename):
 def print_to_logfile(subj_spred_ID, MINC_filename):
 	'''Prints a line to the log file containing the SPReD_ID of the subject and the file associated with that subject.'''
 
+
 	spred_log_file.writelines(','.join([subj_spred_ID, MINC_filename]) + '\n')
 
 
 def upload_data(project_constants):
 	'''
 	Summary:
-		Loop through folders of mouse strains, create subjects, sessions, scans, then upload the data.
+		Loop through folders of mouse strains; create subjects, sessions, scans, then upload the data.
 	Args:
 		project_constants: A dictionary containing metadata related to the project and upload.
 	'''
 
+	# Get a list of all SPReD IDs currently in the project.
+	server_subject_IDs = get_server_subject_IDs(project_constants)
+
+	# Construct dictionary of strains currently in the project and their associated strain codes.
+	server_uploaded_strains = get_server_uploaded_strains(project_constants, server_subject_IDs)
+
 	# Create data.frame-like structure using pandas containing subject metadata.
 	subject_metadata = pd.read_table(filepath_or_buffer=project_constants['subject_metadata_file'], dtype={'Filename': str}, sep=',')
+
+	# Generate SPReD IDs for subjects defined in the subject metadata file.
+	subject_metadata = generate_subject_IDs(project_constants, server_uploaded_strains, subject_metadata)
 
 	# Loop through subject metadata, dispatch other methods calling web services to create subject, session, and scan.
 	# Use status_code variable to keep track of whether the upload was successful.
 	for index, row in subject_metadata.iterrows():
 
 		subj_num = str(row['SubjNum'])
-		subj_num = zero_pad_subj_num(subj_num)
+		# subj_num = zero_pad_num(subj_num, 4)
 
 		MINC_filename = row['Filename']
+		processed_subj_dir = row['ProcessedFolder']
 		subj_spred_ID = project_constants['project_name'] + '_' + subj_num
 		session_name = subj_spred_ID + '_' +  project_constants['visit_num'] + '_' + 'SE' +  project_constants['session_num'] + '_' +  project_constants['modality']
 		are_you_sure = ''
@@ -527,7 +680,7 @@ def upload_data(project_constants):
 				if are_you_sure == 'y':
 					create_subject(MINC_filename, subj_spred_ID, row, project_constants)
 					create_session(MINC_filename, subj_spred_ID, session_name, project_constants)
-					create_scan(MINC_filename, subj_spred_ID, session_name, project_constants)
+					create_scan(MINC_filename, subj_spred_ID, session_name, project_constants, processed_subj_dir)
 				elif are_you_sure == 'n':
 					pass
 				else:
@@ -552,7 +705,7 @@ def upload_zip(file_names, zip_name, url, subj_spred_ID, action, project_constan
 		Nothing.  Just uploads a zip file using the XNAT web services.
 	'''
 
-	# Create .zip file containing the all files in the file list to be uploaded.
+	# Create .zip file containing all files in the file list to be uploaded.
 	# Hopefully faster than uploading the uncompressed files, but has added step of zipping the files.
 	with zipfile.ZipFile(file=zip_name, mode='a') as zf:
 		for file_name in file_names:
@@ -569,20 +722,21 @@ def upload_zip(file_names, zip_name, url, subj_spred_ID, action, project_constan
 	# Possibly return success/fail
 	
 
-def zero_pad_subj_num(subj_num):
+def zero_pad_num(num, n):
 	'''
 	Summary:
-		This method ensures that a subject number is 4 digits by zero-padding it if necessary.
+		This method ensures that a string representation of a number is n digits by left padding with zeros if necessary.
 	Args:
-		subj_num: A string specifying the subject number.
+		num: A string representing a number.
+		n: An integer specifying the number of digits the return value should conform to.  The number will be left padded with zeros to achieve the required number of digits.
 	Returns:
-		subj_num: The zero-padded subject number.
+		num: The zero-padded number.
 	'''
 
-	for i in range(len(subj_num),4):
-		subj_num = ''.join('0', subj_num)
+	for i in range(len(num), n):
+		num = '0' + num
 
-	return subj_num
+	return num
 
 
 def main():
