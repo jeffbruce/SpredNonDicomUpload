@@ -9,7 +9,7 @@ gfFilePath = '/micehome/jbruce/Documents/Code/R/ClusterMouseAutism/data/'
 foldersToUpload = data.frame(FolderName=c('/projects/moush/jacob/ITGB3/ITGB3_Images/Distortion_Corrected/'),
                              ProcessedFolderName=c('/projects/moush/jacob/ITGB3/ITGB3_22Jan12_ANTS_processed/'),
                              StrainLabel=c('ITGB3'),
-                             GfFile=c(paste(gfFilePath, 'gf_ITGB3_relative.txt', sep="")),
+                             GfFile=c(paste(gfFilePath, 'gf_ITGB3_relative.txt', sep='')),
                              stringsAsFactors=FALSE)
 
 # Create data frame data structure to store the metadata, which will eventually be written to a csv.
@@ -100,8 +100,6 @@ for (strainIndex in 1:dim(foldersToUpload)[1]) {
     }
   }
 }
-
-browser()
 
 allSubjects = allSubjects[2:dim(allSubjects)[1],]
 
