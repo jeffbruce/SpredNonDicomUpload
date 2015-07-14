@@ -30,16 +30,13 @@ spred_log_file = 0
 def assign_next_available_strain_code(server_uploaded_strains, cur_strain_count):
 	'''
 	Summary:
-		Retrieve the next available logical strain code to use for a given SPReD project.
+		Retrieve the next logical strain code to use for a given SPReD project.
 	Args:
 		server_uploaded_strains: A dictionary mapping strain labels currently existing in the project to their strain codes.
 		cur_strain_count: An integer representing the strain number to start counting from.  This argument is used to provide a slight speed up over starting at 1 each time.
 	Returns:
 		strain_code: A string representing the next available strain code which will be used for the current strain being uploaded.
 	'''
-
-	used_strain_codes = server_uploaded_strains.values()
-	used_strain_codes.sort()
 
 	while True:
 		strain_code =  JeffUtility.convert_decimal_to_base(cur_strain_count, 36)
@@ -64,8 +61,8 @@ def check_HTTP_status_code(action, response, subj_spred_ID):
 	if response.status_code == 401:
 		print 'You probably entered an invalid username or password.'
 
-	# for some reason the user doesn't have permission to delete the subject
-	# ask admin to delete subject, and skip subject for the time being
+	# User for some reason doesn't have permission to delete the subject.
+	# Ask admin to delete subject, and skip subject for the time being.
 	if response.status_code == 403 and action == 'deleting subject':
 		print 'You do not have permission to delete subject ' + subj_spred_ID
 		print 'Ask administrator of SPReD project to delete subject ' + subj_spred_ID
@@ -108,7 +105,7 @@ def create_scan(MINC_filename, subj_spred_ID, session_name, project_constants, p
 	upload_zip(file_names=[MINC_filename], zip_name=zip_name, url=url, subj_spred_ID=subj_spred_ID, action='upload distortion corrected', project_constants=project_constants)
 
 	# Create resource
-	# Really the resource number should be a running count
+	# TODO - refactor so that resource number is automatically instead of manually incremented 
 	resource_params = get_resource_metadata(project_constants)
 	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' + str(int(project_constants['resource_num']) + 1)
 	resp = project_constants['session'].put(url, params=resource_params)
@@ -121,8 +118,8 @@ def create_scan(MINC_filename, subj_spred_ID, session_name, project_constants, p
 	upload_zip(file_names=file_names, zip_name=zip_name, url=url, subj_spred_ID=subj_spred_ID, action='upload resampled and stats registrations', project_constants=project_constants)
 
 	# Notify user of success and print information about the upload to a logfile
-	notify_user_of_success(subj_spred_ID, MINC_filename)
-	print_to_logfile(subj_spred_ID, MINC_filename)
+	notify_user_of_success(subj_spred_ID)
+	print_to_logfile(subj_spred_ID, MINC_filename, processed_subj_dir)
 
 
 def create_session(MINC_filename, subj_spred_ID, session_name, project_constants):
@@ -149,7 +146,7 @@ def create_subject(MINC_filename, subj_spred_ID, row, project_constants):
 	Args:
 		MINC_filename: The name of the MINC file to upload.
 		subj_spred_ID: The well-formatted SPReD ID for the subject.
-		row: A row in a pandas data frame with subject metadata.
+		row: A row in a pandas DataFrame with subject metadata.
 		project_constants: A dictionary containing metadata related to the project and upload.
 	'''
 
@@ -157,7 +154,7 @@ def create_subject(MINC_filename, subj_spred_ID, row, project_constants):
 	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID
 	resp = project_constants['session'].get(url)
 	
-	# If the subject already exists, delete it, so it can be created again.
+	# If the subject already exists, delete it so it can be created again.
 	if resp.status_code != 404:
 		url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '?removeFiles=true'
 		resp = project_constants['session'].delete(url)
@@ -173,7 +170,7 @@ def create_subject(MINC_filename, subj_spred_ID, row, project_constants):
 def generate_subject_IDs(project_constants, server_uploaded_strains, subject_metadata):
 	'''
 	Summary:
-		Generates SPReD IDs for the subjects specified in the subject metadata DataFrame.
+		Generates SPReD IDs for the subjects contained in the subject metadata DataFrame.
 	Args:
 		project_constants: A dictionary containing metadata related to the project and upload.
 		server_uploaded_strains: A dictionary mapping strain labels currently existing in the project to their strain codes.
@@ -196,7 +193,7 @@ def generate_subject_IDs(project_constants, server_uploaded_strains, subject_met
 			cur_subj_count = 1
 			cur_strain_count += 1
 
-		subj_num =  JeffUtility.convert_decimal_to_base(str(cur_subj_count), 36)
+		subj_num = JeffUtility.convert_decimal_to_base(str(cur_subj_count), 36)
 		subj_num = zero_pad_num(subj_num, 2)
 
 		if strain_label in server_uploaded_strains:
@@ -331,6 +328,7 @@ def get_scan_metadata(MINC_filename, project_constants):
 	# omitted xnat:mrScanData/startTime = time since it's in the session anyway
 	# time must be of type xs:time
 
+	# TODO - refactor these lines to be single line statements with a helper function
 	# fov and matr don't allow 3D values
 	# fov must have integer values, yet MINC has them in float values
 	if pslabel is not None:
@@ -391,7 +389,6 @@ def get_server_subject_IDs(project_constants):
 	for subject in subjects_json:
 		spred_ID = subject['label']
 		spred_ID_str = str(spred_ID)  # strip unicode chars (u'') 
-		# spred_ID_str = spred_ID_str[-4:-2]  # get only the strain code labels
 		server_subject_IDs.append(spred_ID_str)
 
 	return server_subject_IDs
@@ -464,6 +461,7 @@ def get_session_metadata(MINC_filename, session_name, project_constants):
 	tr = float(get_minc_field('vnmr:tr', MINC_filename))
 	etl = float(get_minc_field('vnmr:etl', MINC_filename))
 	
+	# TODO - look into when this bug has been fixed
 	# duration isn't handled properly for some reason
 	# this is a confirmed bug on XNAT's end
 	# if ni is not None and nf is not None and nfid is not None and nt is not None and tr is not None and etl is not None:
@@ -540,7 +538,7 @@ def get_subject_metadata(row, project_constants):
 def init_log_file(project_constants):
 	'''
 	Summary:
-		Creates a log file to record subjects that were successfully uploaded to braincode.
+		Creates a log file to record subjects that were successfully uploaded to Brain-CODE.
 	Args:
 		project_constants: A dictionary containing metadata related to the project and upload.
 	Returns:
@@ -560,7 +558,7 @@ def init_log_file(project_constants):
 	spred_log_file.writelines('Uploaded data to the following url: ' + project_constants['base_url'] + '\n')
 	spred_log_file.writelines('Data was uploaded by user: ' + project_constants['username'] + '\n')
 	spred_log_file.writelines('\n')
-	spred_log_file.writelines('SPReD_id' + ',' + 'MINC_filename' + '\n')
+	spred_log_file.writelines('SPReD_ID' + ',' + 'MINC_Filename' + ',' + 'Processed_Folder' '\n')
 
 	return spred_log_file
 
@@ -568,9 +566,9 @@ def init_log_file(project_constants):
 def init_project_constants():
 	'''
 	Summary:
-		Initialize project constants used for the upload, such as the PI first and last name, constant scanning parameters, etc.  Decided against using collections.namedtuple().
+		Initialize project constants used for the upload, such as the PI first and last name, constant scanning parameters, etc.  Decided against using collections.namedtuple().  For a new project, the user should change the values here!
 	Returns:
-		project_constants: A dictionary containing name:value pairs constant throughout the project.  This is preferred over global variables so that the module can potentially be imported down the line.
+		project_constants: A dictionary containing name:value pairs constant throughout the project.  This is preferred over global variables so that the module can potentially be imported down the line.  It's unlikely that this module will be imported simply because there is so much customization specific to MICe here.
 	'''
 
 	project = 'PND11'
@@ -622,17 +620,16 @@ def insert(original, new, pos):
 	return original[:pos] + new + original[pos:]
 
 
-def notify_user_of_success(subj_spred_ID, MINC_filename):
+def notify_user_of_success(subj_spred_ID):
 	'''Notifies the user of the successful creation of a collective subject, session, scan.'''
 
 	print 'Successfully created subject: ' + subj_spred_ID
 
 
-def print_to_logfile(subj_spred_ID, MINC_filename):
+def print_to_logfile(subj_spred_ID, MINC_filename, processed_subj_dir):
 	'''Prints a line to the log file containing the SPReD_ID of the subject and the file associated with that subject.'''
 
-
-	spred_log_file.writelines(','.join([subj_spred_ID, MINC_filename]) + '\n')
+	spred_log_file.writelines(','.join([subj_spred_ID, MINC_filename, processed_subj_dir]) + '\n')
 
 
 def upload_data(project_constants):
@@ -649,7 +646,7 @@ def upload_data(project_constants):
 	# Construct dictionary of strains currently in the project and their associated strain codes.
 	server_uploaded_strains = get_server_uploaded_strains(project_constants, server_subject_IDs)
 
-	# Create data.frame-like structure using pandas containing subject metadata.
+	# Create data.frame-like structure using pandas which will contain the subject metadata.
 	subject_metadata = pd.read_table(filepath_or_buffer=project_constants['subject_metadata_file'], dtype={'Filename': str}, sep=',')
 
 	# Generate SPReD IDs for subjects defined in the subject metadata file.
@@ -694,15 +691,13 @@ def upload_data(project_constants):
 def upload_zip(file_names, zip_name, url, subj_spred_ID, action, project_constants):
 	'''
 	Summary:
-		Uploads a zip file containing a bunch of files relating to a SPReD subject to a specific url.
+		Uploads a zip file to a specific url containing a set of files relating to a SPReD subject.
 	Args:
 		file_names: A list of string paths to files.
 		zip_name: A string specifying the zip file name to upload.
 		url: A string specifying the location to upload files to.
 		subj_spred_ID: The well-formatted SPReD ID.
 		action: A string specifying whether distortion corrected files or stats volumes are being uploaded.
-	Returns:
-		Nothing.  Just uploads a zip file using the XNAT web services.
 	'''
 
 	# Create .zip file containing all files in the file list to be uploaded.
@@ -719,21 +714,21 @@ def upload_zip(file_names, zip_name, url, subj_spred_ID, action, project_constan
 	# Delete the .zip file created to upload once it's done uploading
 	os.remove(zip_name)
 
-	# Possibly return success/fail
+	# TODO - return error message if it failed
 	
 
-def zero_pad_num(num, n):
+def zero_pad_num(num, d):
 	'''
 	Summary:
-		This method ensures that a string representation of a number is n digits by left padding with zeros if necessary.
+		This method ensures that a string representation of a number is d digits by left padding with zeros if necessary.
 	Args:
 		num: A string representing a number.
-		n: An integer specifying the number of digits the return value should conform to.  The number will be left padded with zeros to achieve the required number of digits.
+		d: An integer specifying the number of digits the number should have.  The number will be left padded with zeros to achieve the required number of digits.
 	Returns:
 		num: The zero-padded number.
 	'''
 
-	for i in range(len(num), n):
+	for i in range(len(num), d):
 		num = '0' + num
 
 	return num
