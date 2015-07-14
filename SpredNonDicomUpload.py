@@ -10,17 +10,17 @@ import requests
 import subprocess
 import sys
 import zipfile
-import zlib
+# import zlib
 
-if sys.version_info[0] < 3:
-    from StringIO import StringIO
-else:
-    from io import StringIO
+# if sys.version_info[0] < 3:
+#     from StringIO import StringIO
+# else:
+#     from io import StringIO
 
 # from collections import namedtuple
 
-try: import simplejson as json
-except ImportError: import json
+# try: import simplejson as json
+# except ImportError: import json
 
 from jeffs_utilities import JeffUtility
 
