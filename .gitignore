@@ -13,11 +13,15 @@ vignettes/*.html
 vignettes/*.pdf
 
 # locked files
-*.~lock
+.~lock*
 
-# .txt log files
+# Documents
 *.txt
+*.odt
 
 # sub-directories
 /example_files/*
 /logs/*
+
+# compiled python
+*.pyc
