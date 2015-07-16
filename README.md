@@ -1,11 +1,11 @@
 ---
-output: html_document
+output: pdf_document
 ---
 # SpredNonDicomUpload Documentation
 
 ## Introduction
 
-This is some brief documentation for the work I did for the Mouse Imaging Centre (MICe) and the Ontario Brain Institute (OBI).  The OBI is working on a big data solution for neuroscience data, called [Brain-CODE][1], and it was my job to upload approximately 50 GB of mouse brain imaging data from MICe into the imaging side of Brain-CODE.  The imaging side of Brain-CODE uses the Stroke Patient Recovery Research Database (SPReD).
+This is some brief documentation for the work I did for the Mouse Imaging Centre (MICe) and the Ontario Brain Institute (OBI).  The OBI is working on a big data solution for neuroscience data, called [Brain-CODE][1], and it was my job to upload approximately 50 GB of mouse brain imaging data from MICe into the imaging side of Brain-CODE.  The imaging side of Brain-CODE uses the Stroke Patient Recovery Research Database ([SPReD][2]), which is based off of the [XNAT][3] platform.
 
 The upload process uses an R script to generate the subject metadata, then uses a Python script to map the subject metadata to the XNAT XML schema, to extract other metadata, to package files together for an upload, then to structure HTTP PUT web service calls to the XNAT REST API. 
 
@@ -79,3 +79,5 @@ This section describes some MINC fields that were difficult to map to the allowa
 References
 -->
 [1]: https://braincode.ca/
+[2]: https://spred.braincode.ca/
+[3]: http://www.xnat.org/
