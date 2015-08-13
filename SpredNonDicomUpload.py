@@ -89,31 +89,31 @@ def create_scan(MINC_filename, subj_spred_ID, session_name, project_constants, p
 
 	# Create scan
 	scan_params = get_scan_metadata(MINC_filename, project_constants)
-	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num']))
+	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/' + str(int(project_constants['scan_num']))
 	resp = project_constants['session'].put(url, params=scan_params)
 	check_HTTP_status_code('creating scan', resp, subj_spred_ID)
 
 	# Create resource
 	resource_params = get_resource_metadata(project_constants)
-	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' + str(int(project_constants['resource_num']))
+	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/' + str(int(project_constants['scan_num'])) + '/resources/' + str(int(project_constants['resource_num']))
 	resp = project_constants['session'].put(url, params=resource_params)
 	check_HTTP_status_code('creating resource', resp, subj_spred_ID)
 
 	# Upload the distortion corrected image 
-	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' +  str(int(project_constants['resource_num'])) + '/files/'
+	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/' + str(int(project_constants['scan_num'])) + '/resources/' +  str(int(project_constants['resource_num'])) + '/files/'
 	zip_name = subj_spred_ID + '_distortion_corrected' + '.zip'
 	upload_zip(file_names=[MINC_filename], zip_name=zip_name, url=url, subj_spred_ID=subj_spred_ID, action='upload distortion corrected', project_constants=project_constants)
 
 	# Create resource
 	# TODO - refactor so that resource number is automatically instead of manually incremented 
 	resource_params = get_resource_metadata(project_constants)
-	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' + str(int(project_constants['resource_num']) + 1)
+	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/' + str(int(project_constants['scan_num'])) + '/resources/' + str(int(project_constants['resource_num']) + 1)
 	resp = project_constants['session'].put(url, params=resource_params)
 	check_HTTP_status_code('creating resource', resp, subj_spred_ID)
 
 	# Upload additional registrations of an image
 	file_names = get_registration_files(processed_subj_dir)
-	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/scan' + str(int(project_constants['scan_num'])) + '/resources/' +  str(int(project_constants['resource_num']) + 1) + '/files/'
+	url = project_constants['base_url'] + project_constants['project_name'] + '/subjects/' + subj_spred_ID + '/experiments/' + session_name + '/scans/' + str(int(project_constants['scan_num'])) + '/resources/' +  str(int(project_constants['resource_num']) + 1) + '/files/'
 	zip_name = subj_spred_ID + '_registrations' + '.zip'
 	upload_zip(file_names=file_names, zip_name=zip_name, url=url, subj_spred_ID=subj_spred_ID, action='upload resampled and stats registrations', project_constants=project_constants)
 
